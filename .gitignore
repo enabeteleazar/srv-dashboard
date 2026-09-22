@@ -1,2 +1,8 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+
+# Rien d'autre ne doit apparaître ici : les données du serveur (projects.json,
+# .env, .projects.mk, .data/, .logs/) vivent à la racine de /srv, pas dans ce
+# dépôt — c'est ce qui le rend clonable tel quel.
