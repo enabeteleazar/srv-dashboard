@@ -1,0 +1,90 @@
+{# Briques réutilisées par toutes les pages : icônes SVG, badges, pastilles. #}
+
+{% macro icon(name, cls="") -%}
+{%- if name == "grid" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="2" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="2" y="9" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.3"/><rect x="9" y="9" width="5" height="5" rx="1.2" stroke="currentColor" stroke-width="1.3"/></svg>
+{%- elif name == "pulse" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 8h3l2-4.5L9 12.5l2-4.5h3.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "rocket" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.5 9.5 3 8.8l1.6-2.2a7.5 7.5 0 0 1 6.8-3.1l1.9.2.2 1.9a7.5 7.5 0 0 1-3.1 6.8L8.2 14l-.7-3.5" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><circle cx="10" cy="6" r="1.1" stroke="currentColor" stroke-width="1.2"/></svg>
+{%- elif name == "plug" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 2v4M10 2v4M4.5 6h7v2.2a3.5 3.5 0 0 1-7 0V6ZM8 11.7V14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "plus" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+{%- elif name == "refresh" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3.6h-3.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "github" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.5c-2.22.48-2.69-1.07-2.69-1.07-.36-.92-.89-1.16-.89-1.16-.72-.5.06-.49.06-.49.8.06 1.22.83 1.22.83.71 1.21 1.86.87 2.32.66.07-.52.28-.87.5-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>
+{%- elif name == "external" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6.5 3.5H3.5v9h9v-3M9.5 2.5h4v4M13 3l-6 6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "terminal" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="m4.5 6.5 2 1.8-2 1.8M8.5 10.5h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "check" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "alert" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 5v4M8 11.2v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.3"/></svg>
+{%- elif name == "spinner" -%}
+<svg class="icon spinner {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.6" opacity="0.25"/><path d="M14 8a6 6 0 0 0-6-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+{%- elif name == "chevron" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3.5 5 4.5-5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "back" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3.5 5 8l5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- elif name == "sun" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="3.1" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M12.6 3.4l-1.1 1.1M4.5 11.5l-1.1 1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+{%- elif name == "moon" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13.5 9.6A5.8 5.8 0 0 1 6.4 2.5a5.8 5.8 0 1 0 7.1 7.1Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+{%- elif name == "git" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="4.5" cy="3.8" r="1.8" stroke="currentColor" stroke-width="1.3"/><circle cx="4.5" cy="12.2" r="1.8" stroke="currentColor" stroke-width="1.3"/><circle cx="11.5" cy="6.5" r="1.8" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 5.6v4.8M11.5 8.3c0 2-1.9 2.1-3.4 2.4-1 .2-2 .4-2.4 1.1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+{%- elif name == "folder" -%}
+<svg class="icon {{ cls }}" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.8 4.2c0-.7.6-1.2 1.2-1.2h2.6l1.4 1.6h5c.7 0 1.2.5 1.2 1.2v6c0 .7-.5 1.2-1.2 1.2H3c-.6 0-1.2-.5-1.2-1.2V4.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+{%- endif -%}
+{%- endmacro %}
+
+{# Statut de suivi du projet : pastille + libellé (jamais la couleur seule). #}
+{% macro status_badge(status, label) -%}
+<span class="badge badge-status status-{{ status }}"><span class="dot"></span>{{ label }}</span>
+{%- endmacro %}
+
+{# Priorité : trois barres remplies selon le niveau + libellé. #}
+{% macro priority_badge(priority, label) -%}
+<span class="priority priority-{{ priority }}" title="Priorité {{ label|lower }}">
+  <span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>{{ label }}
+</span>
+{%- endmacro %}
+
+{# État du service : en cours d'action > en ligne > arrêté. #}
+{% macro service_pill(project) -%}
+{% if project.running %}
+<span class="pill pill-busy">{{ icon("spinner") }}en cours</span>
+{% elif project.up %}
+<span class="pill pill-up"><span class="dot"></span>en ligne</span>
+{% else %}
+<span class="pill pill-down"><span class="dot"></span>arrêté</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro git_pill(git) -%}
+{% if not git.tracked %}
+<span class="pill pill-neutral">pas de dépôt</span>
+{% elif git.dirty %}
+<span class="pill pill-dirty">{{ git.changes }} modif.</span>
+{% else %}
+<span class="pill pill-clean">propre</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro activity_pill(status) -%}
+{% if status == "ok" %}
+<span class="pill pill-clean">{{ icon("check") }}réussi</span>
+{% elif status == "error" %}
+<span class="pill pill-error">{{ icon("alert") }}échec</span>
+{% else %}
+<span class="pill pill-busy">{{ icon("spinner") }}en cours</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro env_badge(environment) -%}
+<span class="badge {{ 'badge-prod' if environment == 'production' else 'badge-preview' }}">
+  {{ "production" if environment == "production" else "preview" }}
+</span>
+{%- endmacro %}

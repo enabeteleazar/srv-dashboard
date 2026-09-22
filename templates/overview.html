@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Projets{% endblock %}
+{% block heading %}Projets{% endblock %}
+{% block subheading %}
+<p class="sub">{{ summary.total }} projet{{ "s" if summary.total != 1 }} · {{ summary.up }} en ligne · {{ summary.vercel }} sur Vercel</p>
+{% endblock %}
+
+{% block content %}
+<section class="stats">
+  <article class="stat">
+    <p class="stat-label">Projets actifs</p>
+    <p class="stat-value">{{ summary.by_status.active }}<span class="stat-unit">/ {{ summary.total }}</span></p>
+    <p class="stat-note">{{ summary.by_status.paused }} en pause · {{ summary.by_status.idea }} idée{{ "s" if summary.by_status.idea != 1 }}</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Services en ligne</p>
+    <p class="stat-value">{{ summary.up }}<span class="stat-unit">/ {{ summary.total }}</span></p>
+    <p class="stat-note">{{ summary.down }} arrêté{{ "s" if summary.down != 1 }}</p>
+  </article>
+  <article class="stat">
+    <p class="stat-label">Déploiements (7 j)</p>
+    <p class="stat-value">{{ summary.deploys_7d }}</p>
+    <p class="stat-note">{{ summary.actions_7d }} action{{ "s" if summary.actions_7d != 1 }} au total</p>
+  </article>
+  <article class="stat {{ 'stat-alert' if summary.failures_7d }}">
+    <p class="stat-label">Échecs (7 j)</p>
+    <p class="stat-value">{{ summary.failures_7d }}</p>
+    <p class="stat-note">{{ "à regarder dans le journal" if summary.failures_7d else "rien à signaler" }}</p>
+  </article>
+</section>
+
+<section class="grid-2">
+  <article class="card">
+    <header class="card-head">
+      <div>
+        <h2>Activité</h2>
+        <p class="card-sub">Actions terminées par jour, 14 derniers jours</p>
+      </div>
+      <div class="legend">
+        <span class="legend-item"><span class="swatch swatch-ok"></span>Réussies</span>
+        <span class="legend-item"><span class="swatch swatch-err"></span>Échecs</span>
+      </div>
+    </header>
+    <div class="card-body">
+      <div id="activity-chart" class="chart" data-chart="activity"></div>
+      <script type="application/json" id="activity-data">{{ summary.activity_daily|tojson }}</script>
+      <details class="data-table">
+        <summary>Voir les données</summary>
+        <table>
+          <thead><tr><th>Jour</th><th>Réussies</th><th>Échecs</th></tr></thead>
+          <tbody>
+            {% for day in summary.activity_daily %}
+            <tr><td>{{ day.date }}</td><td class="num">{{ day.ok }}</td><td class="num">{{ day.error }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    </div>
+  </article>
+
+  <article class="card">
+    <header class="card-head">
+      <div><h2>Dernières actions</h2></div>
+      <a class="link" href="/activity">Tout voir {{ ui.icon("chevron") }}</a>
+    </header>
+    <div class="card-body">
+      {% if activity %}
+      <ul class="feed">
+        {% for entry in activity %}
+        <li class="feed-item">
+          <span class="feed-icon feed-{{ entry.status }}">
+            {{ ui.icon("check") if entry.status == "ok" else (ui.icon("alert") if entry.status == "error" else ui.icon("spinner")) }}
+          </span>
+          <span class="feed-text">
+            <a href="/activity/{{ entry.id }}"><strong>{{ entry.action }}</strong></a>
+            {% if entry.project %}sur <a href="/projects/{{ entry.project }}">{{ entry.project }}</a>{% endif %}
+            <span class="feed-meta">{{ entry.started_at|ago }} · {{ entry.source }}</span>
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty">Aucune action enregistrée pour l'instant — lance un start ou un deploy et l'historique se remplira.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+
+<section class="card">
+  <header class="card-head card-head-toolbar">
+    <div class="filters">
+      <input type="search" id="project-search" class="search" placeholder="Rechercher un projet…" autocomplete="off"
+             data-filter-search aria-label="Rechercher un projet">
+      <div class="chips" role="group" aria-label="Filtrer par statut">
+        <button type="button" class="chip is-active" data-filter-status="">Tous</button>
+        {% for s in statuses %}
+        <button type="button" class="chip" data-filter-status="{{ s }}">{{ status_labels[s] }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    <select class="select-inline" data-filter-root aria-label="Filtrer par dossier">
+      <option value="">Tous les dossiers</option>
+      {% for r in roots %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select>
+  </header>
+
+  <div class="table-wrap">
+    <table class="table table-projects">
+      <thead>
+        <tr>
+          <th>Projet</th><th>Statut</th><th>Priorité</th><th>Service</th>
+          <th>Git</th><th>Vercel</th><th>Dernière action</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="projects-body">
+        {% for p in projects %}
+        <tr data-row data-name="{{ p.name|lower }}" data-status="{{ p.status }}" data-root="{{ p.root }}"
+            data-href="/projects/{{ p.name }}">
+          <td data-label="Projet">
+            <a class="cell-title" href="/projects/{{ p.name }}">{{ p.name }}</a>
+            <span class="cell-sub">{{ p.description or (p.root ~ " · " ~ p.type) }}</span>
+          </td>
+          <td data-label="Statut">{{ ui.status_badge(p.status, p.status_label) }}</td>
+          <td data-label="Priorité">{{ ui.priority_badge(p.priority, p.priority_label) }}</td>
+          <td data-label="Service">
+            {{ ui.service_pill(p) }}
+            {% if p.port %}<span class="mono cell-sub">:{{ p.port }}</span>{% endif %}
+          </td>
+          <td data-label="Git">
+            {{ ui.git_pill(p.git) }}
+            {% if p.git.branch %}<span class="cell-sub mono">{{ p.git.branch }}</span>{% endif %}
+          </td>
+          <td data-label="Vercel">
+            {% if not p.vercel_enabled %}<span class="cell-sub">—</span>
+            {% elif p.vercel_linked %}<span class="pill pill-linked">lié</span>
+            {% else %}<span class="pill pill-neutral">non lié</span>{% endif %}
+          </td>
+          <td data-label="Dernière action">
+            {% if p.last_activity %}
+            {% set outcome = {"ok": "réussi", "error": "échec", "running": "en cours"}[p.last_activity.status] %}
+            <span class="cell-title-sm">{{ p.last_activity.action }}</span>
+            <span class="cell-sub {{ 'text-error' if p.last_activity.status == 'error' }}">{{ p.last_activity.started_at|ago }} · {{ outcome }}</span>
+            {% else %}<span class="cell-sub">jamais lancé</span>{% endif %}
+          </td>
+          <td class="cell-chevron">{{ ui.icon("chevron") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="empty" id="no-match" hidden>Aucun projet ne correspond à ce filtre.</p>
+    {% if not projects %}
+    <p class="empty">Aucun projet enregistré — « Nouveau projet » pour en créer un, ou « Sync » si tu en as déjà déposé sur le disque.</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

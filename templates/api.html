@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}API & Neron{% endblock %}
+{% block heading %}API & Neron{% endblock %}
+{% block subheading %}<p class="sub">Tout ce que fait cette interface est disponible en JSON sur <span class="mono">{{ api_base }}</span> (v{{ api_version }}).</p>{% endblock %}
+
+{% block page_actions %}
+<a class="btn" href="/docs" target="_blank" rel="noopener">{{ ui.icon("external") }}Documentation interactive</a>
+<a class="btn" href="/openapi.json" target="_blank" rel="noopener">OpenAPI</a>
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <header class="card-head"><div><h2>Authentification</h2>
+    <p class="card-sub">Jeton Bearer, lu dans <span class="mono">/srv/.env</span> sous <span class="mono">{{ env_key }}</span>.</p></div>
+    <span class="badge {{ 'badge-ok' if api_configured else 'badge-warn' }}">{{ "configuré" if api_configured else "absent" }}</span>
+  </header>
+  <div class="card-body">
+    {% if api_configured %}
+    <p class="text">L'API est active. Le jeton n'est jamais affiché ici : récupère-le sur homebox avec <span class="mono">make api-token</span>, ou fais-en tourner un nouveau avec <span class="mono">make api-token ARGS=--rotate</span> (Neron devra alors être mis à jour).</p>
+    {% else %}
+    <p class="text">Aucun jeton configuré : l'API répond <span class="mono">503</span> à tous les appels. Génère-le sur homebox :</p>
+    <pre class="code">cd /srv &amp;&amp; make api-token</pre>
+    <p class="text">La commande écrit <span class="mono">{{ env_key }}</span> dans <span class="mono">/srv/.env</span> et affiche le jeton une fois. Pas besoin de redémarrer le dashboard : il relit le fichier à chaque appel.</p>
+    {% endif %}
+    <p class="text">L'interface web, elle, reste sans authentification — l'accès est déjà limité par Tailscale.</p>
+  </div>
+</section>
+
+<section class="card">
+  <header class="card-head"><div><h2>Démarrage rapide</h2><p class="card-sub">Depuis homebox, Neron tourne en local : l'API est sur <span class="mono">127.0.0.1</span>.</p></div></header>
+  <div class="card-body">
+    <pre class="code"># état de tous les projets
+curl -s -H "Authorization: Bearer $DASHBOARD_API_TOKEN" -H "X-Client: neron" \
+     {{ api_base }}/projects | jq '.[] | {name, up, status}'
+
+# chiffres clés (pour une réponse vocale : « 11 projets, 3 en ligne »)
+curl -s -H "Authorization: Bearer $DASHBOARD_API_TOKEN" -H "X-Client: neron" \
+     {{ api_base }}/summary
+
+# déployer en preview, sans attendre la fin
+curl -s -X POST -H "Authorization: Bearer $DASHBOARD_API_TOKEN" -H "X-Client: neron" \
+     -H "Content-Type: application/json" -d '{"action":"deploy","wait":false}' \
+     {{ api_base }}/projects/duoLingo/actions
+
+# suivre l'action lancée
+curl -s -H "Authorization: Bearer $DASHBOARD_API_TOKEN" {{ api_base }}/activity/42</pre>
+    <p class="text">L'en-tête <span class="mono">X-Client</span> est repris tel quel dans la colonne « source » du journal : les actions de Neron sont donc distinguables de celles lancées à la main.</p>
+  </div>
+</section>
+
+<section class="card">
+  <header class="card-head"><div><h2>Points d'entrée</h2></div></header>
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Méthode</th><th>Chemin</th><th>Rôle</th></tr></thead>
+      <tbody>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/health</td><td data-label="Rôle">Ping — seul appel sans jeton</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/summary</td><td data-label="Rôle">Compteurs + activité des 14 derniers jours</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/projects</td><td data-label="Rôle">Liste + état live (port, git, vercel)</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/projects/{nom}</td><td data-label="Rôle">Fiche complète : commits, déploiements, journal</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-post">POST</span></td><td data-label="Chemin" class="mono">/projects</td><td data-label="Rôle">Créer un projet (dossier, git/GitHub, Vercel, port)</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-patch">PATCH</span></td><td data-label="Chemin" class="mono">/projects/{nom}</td><td data-label="Rôle">Statut, priorité, description, notes</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-post">POST</span></td><td data-label="Chemin" class="mono">/projects/{nom}/actions</td><td data-label="Rôle">start · stop · restart · dev · build · test · git-push · vercel-link · deploy · deploy-prod</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/projects/{nom}/logs</td><td data-label="Rôle">Fin du log du service</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/activity</td><td data-label="Rôle">Journal, filtrable par projet / résultat / source</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/activity/{id}</td><td data-label="Rôle">Une action + sa sortie complète</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-get">GET</span></td><td data-label="Chemin" class="mono">/deployments</td><td data-label="Rôle">Historique Vercel avec URLs</td></tr>
+        <tr><td data-label="Méthode"><span class="method method-post">POST</span></td><td data-label="Chemin" class="mono">/sync</td><td data-label="Rôle">Scanner /srv et enregistrer les nouveaux dossiers</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <header class="card-head"><div><h2>Client Python</h2>
+    <p class="card-sub">Fourni dans <span class="mono">/srv/clients/srv_dashboard_client.py</span> — zéro dépendance (urllib).</p></div></header>
+  <div class="card-body">
+    <pre class="code">from srv_dashboard_client import SrvDashboardClient
+
+srv = SrvDashboardClient("{{ api_base }}", token=os.environ["{{ env_key }}"])
+srv.summary()                              # {'total': 11, 'up': 3, ...}
+srv.projects(status="active")              # liste filtrée
+srv.run_action("duoLingo", "deploy")       # renvoie l'activité (running)
+srv.wait_for(activity["id"])               # sonde jusqu'à ok/error</pre>
+  </div>
+</section>
+{% endblock %}

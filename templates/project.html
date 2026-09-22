@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}{{ project.name }}{% endblock %}
+
+{% block breadcrumb %}
+<a class="crumb" href="/">{{ ui.icon("back") }}Projets</a>
+{% endblock %}
+
+{% block heading %}{{ project.name }}{% endblock %}
+
+{% block subheading %}
+<div class="head-meta">
+  {{ ui.status_badge(project.status, project.status_label) }}
+  {{ ui.priority_badge(project.priority, project.priority_label) }}
+  {{ ui.service_pill(project) }}
+  <span class="meta-sep"></span>
+  <span class="meta">{{ ui.icon("folder") }}{{ project.root }} · {{ project.type }}{% if project.port %} · port {{ project.port }}{% endif %}</span>
+</div>
+{% if project.description %}<p class="sub">{{ project.description }}</p>{% endif %}
+{% endblock %}
+
+{% block page_actions %}
+<div class="links-row">
+  {% if project.url and project.up %}
+  <a class="btn" href="{{ project.url }}" target="_blank" rel="noopener">{{ ui.icon("external") }}Ouvrir</a>
+  {% endif %}
+  {% if project.github_url %}
+  <a class="btn" href="{{ project.github_url }}" target="_blank" rel="noopener">{{ ui.icon("github") }}GitHub</a>
+  {% endif %}
+  {% if project.last_production and project.last_production.url %}
+  <a class="btn" href="{{ project.last_production.url }}" target="_blank" rel="noopener">{{ ui.icon("rocket") }}Production</a>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+{% if project.running %}
+<div class="flash flash-busy" role="status">{{ ui.icon("spinner") }}<span>Une action est en cours sur ce projet — la page se rafraîchit toute seule à la fin.</span></div>
+{% endif %}
+
+<section class="card">
+  <header class="card-head"><div><h2>Actions</h2><p class="card-sub">Chaque action lance la cible Makefile correspondante et s'enregistre dans le journal.</p></div></header>
+  <div class="card-body action-groups">
+    {% for group, title in [("service", "Service"), ("build", "Build & tests"), ("git", "Git"), ("vercel", "Vercel")] %}
+    {% set group_actions = actions.items()|selectattr("1.group", "equalto", group)|list %}
+    {% if group_actions %}
+    <div class="action-group">
+      <p class="action-group-title">{{ title }}</p>
+      <div class="action-buttons">
+        {% for key, spec in group_actions %}
+        {% set blocked = spec.vercel and not project.vercel_enabled %}
+        <form method="post" action="/projects/{{ project.name }}/action"
+              {% if spec.confirm %}data-confirm="Mettre {{ project.name }} en production sur Vercel ?"{% endif %}>
+          <input type="hidden" name="action" value="{{ key }}">
+          <button type="submit" class="btn {{ 'btn-danger' if spec.confirm }}"
+                  {{ "disabled" if blocked or project.running }}
+                  {% if blocked %}title="Projet non éligible Vercel"{% endif %}>{{ spec.label }}</button>
+        </form>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid-main">
+  <div class="col-main">
+    <section class="card">
+      <header class="card-head"><div><h2>Journal du projet</h2></div>
+        <a class="link" href="/activity?project={{ project.name }}">Tout voir {{ ui.icon("chevron") }}</a></header>
+      <div class="table-wrap">
+        {% if project.activity %}
+        <table class="table">
+          <thead><tr><th>Quand</th><th>Action</th><th>Source</th><th>Durée</th><th>Résultat</th></tr></thead>
+          <tbody>
+            {% for entry in project.activity %}
+            <tr data-href="/activity/{{ entry.id }}">
+              <td data-label="Quand"><span class="cell-title-sm">{{ entry.started_at|ago }}</span><span class="cell-sub">{{ entry.started_at|dt }}</span></td>
+              <td data-label="Action" class="mono">{{ entry.action }}</td>
+              <td data-label="Source">{{ entry.source }}</td>
+              <td data-label="Durée" class="num">{{ entry.duration_ms|dur }}</td>
+              <td data-label="Résultat">{{ ui.activity_pill(entry.status) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}<p class="empty">Aucune action lancée depuis le dashboard pour ce projet.</p>{% endif %}
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><div><h2>Déploiements</h2></div></header>
+      <div class="table-wrap">
+        {% if project.deployments %}
+        <table class="table">
+          <thead><tr><th>Quand</th><th>Environnement</th><th>Résultat</th><th>URL</th></tr></thead>
+          <tbody>
+            {% for d in project.deployments %}
+            <tr>
+              <td data-label="Quand"><span class="cell-title-sm">{{ d.created_at|ago }}</span><span class="cell-sub">{{ d.created_at|dt }}</span></td>
+              <td data-label="Environnement">{{ ui.env_badge(d.environment) }}</td>
+              <td data-label="Résultat">{{ ui.activity_pill(d.status) }}</td>
+              <td data-label="URL">
+                {% if d.url %}<a class="link mono" href="{{ d.url }}" target="_blank" rel="noopener">{{ d.url|replace("https://", "") }}</a>
+                {% else %}<span class="cell-sub">—</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty">
+          {% if project.vercel_enabled %}Aucun déploiement lancé depuis le dashboard.
+          {% else %}Ce projet n'est pas éligible Vercel (<span class="mono">vercel: false</span> dans projects.json).{% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><div><h2>Commits récents</h2>
+        {% if project.git.branch %}<p class="card-sub">Branche <span class="mono">{{ project.git.branch }}</span></p>{% endif %}</div></header>
+      <div class="card-body">
+        {% if project.commits %}
+        <ul class="commits">
+          {% for c in project.commits %}
+          <li>
+            <span class="mono commit-hash">{{ c.short }}</span>
+            <span class="commit-subject">{{ c.subject }}</span>
+            <span class="cell-sub">{{ c.author }} · {{ c.date|ago }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}<p class="empty">Pas de dépôt git, ou aucun commit.</p>{% endif %}
+      </div>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><div><h2>Logs du service</h2><p class="card-sub">200 dernières lignes de .logs/{{ project.name }}.log</p></div>
+        {% if project.has_log %}<a class="link" href="/logs/{{ project.name }}" target="_blank">Brut {{ ui.icon("external") }}</a>{% endif %}</header>
+      <div class="card-body">
+        {% if logs %}<pre class="logs">{{ logs }}</pre>
+        {% else %}<p class="empty">Aucun log — ce projet n'a pas encore été démarré.</p>{% endif %}
+      </div>
+    </section>
+  </div>
+
+  <aside class="col-side">
+    <section class="card">
+      <header class="card-head"><div><h2>Suivi</h2></div></header>
+      <form class="card-body form" method="post" action="/projects/{{ project.name }}/meta">
+        <div class="field">
+          <label for="pr-status">Statut</label>
+          <select id="pr-status" name="status">
+            {% for s in statuses %}<option value="{{ s }}" {{ "selected" if s == project.status }}>{{ status_labels[s] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="pr-priority">Priorité</label>
+          <select id="pr-priority" name="priority">
+            {% for p in priorities %}<option value="{{ p }}" {{ "selected" if p == project.priority }}>{{ priority_labels[p] }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="pr-description">Description</label>
+          <input id="pr-description" type="text" name="description" value="{{ project.description }}" placeholder="En une phrase">
+        </div>
+        <div class="field">
+          <label for="pr-notes">Notes</label>
+          <textarea id="pr-notes" name="notes" rows="6" placeholder="Ce qu'il reste à faire, décisions, liens…">{{ project.notes }}</textarea>
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Enregistrer</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <header class="card-head"><div><h2>Infos</h2></div></header>
+      <div class="card-body">
+        <dl class="infos">
+          <dt>Dossier</dt><dd class="mono">{{ project.path }}</dd>
+          <dt>Type</dt><dd>{{ project.type }}</dd>
+          <dt>Port</dt><dd class="mono">{{ project.port or "—" }}</dd>
+          <dt>Git</dt><dd>{{ ui.git_pill(project.git) }}</dd>
+          <dt>Repo</dt>
+          <dd>{% if project.github_url %}<a class="link" href="{{ project.github_url }}" target="_blank" rel="noopener">{{ project.github_repo }}</a>{% else %}—{% endif %}</dd>
+          <dt>Vercel</dt>
+          <dd>
+            {% if not project.vercel_enabled %}non éligible
+            {% elif project.vercel_linked %}lié{% else %}pas encore lié{% endif %}
+          </dd>
+        </dl>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

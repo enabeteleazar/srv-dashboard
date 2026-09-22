@@ -1,0 +1,123 @@
+{% import "_macros.html" as ui %}<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}srv{% endblock %} · dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' fill='white' text-anchor='middle'%3E/%3E%3C/text%3E%3C/svg%3E">
+<script src="/static/theme.js"></script>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+   <div class="sidebar-inner">
+    <a class="brand" href="/">
+      <span class="brand-mark">/&gt;</span>
+      <span class="brand-text"><strong>srv</strong><small>homebox</small></span>
+    </a>
+
+    <nav class="nav">
+      <a class="nav-item {{ 'is-active' if nav == 'overview' }}" href="/">{{ ui.icon("grid") }}Projets</a>
+      <a class="nav-item {{ 'is-active' if nav == 'activity' }}" href="/activity">{{ ui.icon("pulse") }}Activité</a>
+      <a class="nav-item {{ 'is-active' if nav == 'deployments' }}" href="/deployments">{{ ui.icon("rocket") }}Déploiements</a>
+      <a class="nav-item {{ 'is-active' if nav == 'api' }}" href="/api">{{ ui.icon("plug") }}API & Neron</a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <button type="button" class="btn btn-ghost btn-block" data-theme-toggle>
+        <span class="theme-light">{{ ui.icon("moon") }}Thème sombre</span>
+        <span class="theme-dark">{{ ui.icon("sun") }}Thème clair</span>
+      </button>
+      <p class="api-state {{ 'is-on' if api_configured else 'is-off' }}">
+        <span class="dot"></span>API {{ "active" if api_configured else "sans jeton" }}
+      </p>
+    </div>
+   </div>
+  </aside>
+
+  <main class="main" data-poll="/ui/state">
+    <header class="page-head">
+      <div class="page-title">
+        {% block breadcrumb %}{% endblock %}
+        <h1>{% block heading %}{% endblock %}</h1>
+        {% block subheading %}{% endblock %}
+      </div>
+      <div class="page-actions">
+        {% block page_actions %}
+        <form method="post" action="/sync"><button class="btn" type="submit">{{ ui.icon("refresh") }}Sync</button></form>
+        <button type="button" class="btn btn-primary" data-open-dialog="newProjectDialog">{{ ui.icon("plus") }}Nouveau projet</button>
+        {% endblock %}
+      </div>
+    </header>
+
+    {% if flash %}
+    <div class="flash flash-{{ flash_kind }}" role="status">
+      {{ ui.icon("check") if flash_kind == "ok" else ui.icon("alert") }}<span>{{ flash }}</span>
+    </div>
+    {% endif %}
+
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<dialog id="newProjectDialog" class="modal">
+  <form method="post" action="/projects/new">
+    <div class="modal-head">
+      <h2>Nouveau projet</h2>
+      <button type="button" class="icon-btn" data-close-dialog aria-label="Fermer">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="np-name">Nom</label>
+        <input id="np-name" type="text" name="name" required autocomplete="off"
+               pattern="[A-Za-z][A-Za-z0-9_.\-]*" placeholder="monNouveauSite">
+        <p class="hint">Commence par une lettre — lettres, chiffres, « - », « _ », « . ».</p>
+      </div>
+      <div class="field">
+        <label for="np-description">Description</label>
+        <input id="np-description" type="text" name="description" autocomplete="off"
+               placeholder="À quoi sert ce projet (facultatif)">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="np-root">Dossier</label>
+          <select id="np-root" name="root">
+            {% for r in roots %}<option value="{{ r }}" {{ "selected" if r == "projects" }}>{{ r }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="np-type">Type</label>
+          <select id="np-type" name="type">
+            {% for t in types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label for="np-priority">Priorité</label>
+          <select id="np-priority" name="priority">
+            {% for p in priorities %}<option value="{{ p }}" {{ "selected" if p == "normal" }}>{{ priority_labels[p] }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <p class="hint">« static » crée un dossier avec un index.html de départ ; « vite » et « custom » créent le dossier vide — dépose ton code dedans avant de lancer dev/build.</p>
+      <div class="field-row field-row-tight">
+        <label class="check"><input type="checkbox" name="git" value="on" checked> Créer le repo GitHub</label>
+        <select name="visibility" class="select-inline">
+          <option value="public" selected>public</option>
+          <option value="private">privé</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" name="vercel" value="on"> Lier à Vercel tout de suite</label>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn" data-close-dialog>Annuler</button>
+      <button type="submit" class="btn btn-primary">Créer le projet</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="tooltip" id="chart-tooltip" hidden></div>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

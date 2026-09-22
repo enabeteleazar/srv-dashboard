@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block title %}Activité #{{ entry.id }}{% endblock %}
+{% block breadcrumb %}<a class="crumb" href="/activity">{{ ui.icon("back") }}Activité</a>{% endblock %}
+{% block heading %}{{ entry.action }}{% if entry.project %} · {{ entry.project }}{% endif %}{% endblock %}
+{% block subheading %}
+<div class="head-meta">
+  {{ ui.activity_pill(entry.status) }}
+  <span class="meta">{{ entry.started_at|dt }} · {{ entry.duration_ms|dur }} · source {{ entry.source }}</span>
+</div>
+{% endblock %}
+
+{% block page_actions %}
+{% if entry.project %}<a class="btn" href="/projects/{{ entry.project }}">Voir le projet</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+<section class="card">
+  <header class="card-head"><div><h2>Sortie de la commande</h2>
+    <p class="card-sub">Code de sortie : <span class="mono">{{ entry.exit_code if entry.exit_code is not none else "—" }}</span></p></div></header>
+  <div class="card-body">
+    {% if entry.output %}<pre class="logs">{{ entry.output }}</pre>
+    {% else %}<p class="empty">{{ "Action encore en cours…" if entry.status == "running" else "Pas de sortie enregistrée." }}</p>{% endif %}
+  </div>
+</section>
+{% endblock %}
