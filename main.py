@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# srvctl vit à côté de ce fichier : on s'assure que le dossier du
+# dépôt est sur sys.path quel que soit le cwd (uvicorn, make, cron…).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from fastapi import FastAPI, Form, Request  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse  # noqa: E402

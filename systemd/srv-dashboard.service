@@ -1,0 +1,42 @@
+[Unit]
+Description=Dashboard /srv — suivi des projets et API pour Neron
+Documentation=file:///srv/dashboard/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=eleazar
+Group=eleazar
+WorkingDirectory=/srv/dashboard
+
+# uvicorn est installé dans le site-packages utilisateur d'eleazar :
+# `python3 -m uvicorn` le trouve sans dépendre du PATH du service.
+Environment=SRV_ROOT=/srv
+Environment=DASHBOARD_PORT=5199
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port ${DASHBOARD_PORT}
+
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+
+# IMPORTANT : le dashboard lance les serveurs des projets (npx serve, vite…)
+# avec setsid/nohup — ils doivent survivre à un stop/restart du dashboard.
+# KillMode=process ne signale que le processus principal, pas tout le cgroup.
+KillMode=process
+
+# Durcissement volontairement léger : les actions du dashboard appellent
+# git, gh, pnpm, npx et vercel, qui écrivent tous dans le HOME d'eleazar
+# (~/.npm, ~/.vercel, ~/.config/gh). Un ProtectHome les casserait.
+NoNewPrivileges=yes
+ProtectSystem=full
+ReadWritePaths=/srv
+
+# Journal : `journalctl -u srv-dashboard -f`
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=srv-dashboard
+
+[Install]
+WantedBy=multi-user.target

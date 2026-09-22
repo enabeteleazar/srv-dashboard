@@ -11,14 +11,16 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
 
-# /srv doit être sur sys.path pour `import srvctl` quel que soit le cwd.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# srvctl vit à côté de ce fichier : on s'assure que le dossier du
+# dépôt est sur sys.path quel que soit le cwd (uvicorn, make, cron…).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from srvctl import journal  # noqa: E402
 from srvctl.discovery import root_path  # noqa: E402
@@ -26,6 +28,8 @@ from srvctl.models import ProjectEntry  # noqa: E402
 from srvctl.registry import get_root, load_registry, save_registry  # noqa: E402
 from srvctl.status import git_status, port_is_up, recent_commits  # noqa: E402
 from srvctl.vercel import is_linked  # noqa: E402
+
+BASE_DIR = Path(__file__).resolve().parent
 
 PROJECT_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 VERCEL_URL_RE = re.compile(r"https://[A-Za-z0-9][A-Za-z0-9.-]*\.vercel\.app[^\s\"']*")
@@ -172,17 +176,44 @@ def summary(days: int = 14) -> dict:
 
 # --- exécution ------------------------------------------------------------
 
+def _child_env() -> dict:
+    """Environnement des commandes lancées (make, srvctl) : la racine du
+    serveur et le dossier du dépôt, pour que `python3 -m srvctl.cli`
+    fonctionne alors qu'on s'exécute depuis /srv et que srvctl vit dans
+    /srv/dashboard."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH")
+    env["PYTHONPATH"] = f"{BASE_DIR}{os.pathsep}{existing}" if existing else str(BASE_DIR)
+    env["SRV_ROOT"] = str(get_root())
+    return env
+
+
 def _run(cmd: list[str], timeout: int = 1800) -> tuple[int, str]:
+    """Lance une commande depuis la racine du serveur et récupère sa sortie.
+
+    La sortie passe par un fichier temporaire, jamais par un tube : `make
+    start`/`dev` lance les serveurs des projets en arrière-plan (`setsid
+    nohup … &`), et le sous-shell d'arrière-plan garde le tube ouvert tant
+    que le serveur tourne. Avec capture_output=True, l'appel ne rendrait
+    donc jamais la main (action bloquée en « en cours », projet verrouillé).
+    Avec un fichier, on n'attend que la fin de `make` lui-même.
+    """
     try:
-        proc = subprocess.run(
-            cmd, cwd=str(get_root()), capture_output=True, text=True,
-            timeout=timeout, env=os.environ.copy(),
-        )
-    except subprocess.TimeoutExpired:
-        return 124, f"[délai dépassé après {timeout}s]"
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as sink:
+            try:
+                proc = subprocess.run(
+                    cmd, cwd=str(get_root()), stdin=subprocess.DEVNULL,
+                    stdout=sink, stderr=subprocess.STDOUT,
+                    timeout=timeout, env=_child_env(),
+                )
+                code = proc.returncode
+            except subprocess.TimeoutExpired:
+                sink.seek(0)
+                return 124, sink.read() + f"\n[délai dépassé après {timeout}s]"
+            sink.seek(0)
+            return code, sink.read()
     except OSError as exc:
         return 127, f"[impossible de lancer {' '.join(cmd)} : {exc}]"
-    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
 def _release(name: Optional[str]) -> None:
