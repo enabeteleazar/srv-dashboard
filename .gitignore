@@ -6,3 +6,17 @@ __pycache__/
 # Rien d'autre ne doit apparaître ici : les données du serveur (projects.json,
 # .env, .projects.mk, .data/, .logs/) vivent à la racine de /srv, pas dans ce
 # dépôt — c'est ce qui le rend clonable tel quel.
+
+srvctl/projects.json
+srvctl/logs/
+srvctl/pids/
+*.backup.*
+dashboard.log
+dashboard.pid
+
+srvctl/projects.json
+srvctl/logs/
+srvctl/pids/
+*.backup.*
+dashboard.log
+dashboard.pid

@@ -50,3 +50,41 @@ def init_git_and_github_repo(project_dir: Path, name: str, visibility: str = "pu
     except subprocess.CalledProcessError as exc:
         result["error"] = f"gh repo create a échoué: {exc.stderr.strip() if exc.stderr else exc}"
     return result
+
+
+def detect_git_remote(project_dir: Path) -> str | None:
+    """Retourne le dépôt origin existant sans modifier le dépôt local."""
+    if not has_git(project_dir):
+        return None
+
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            cwd=project_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return None
+
+    remote = result.stdout.strip()
+    if not remote:
+        return None
+
+    # git@github.com:owner/repo.git
+    if remote.startswith("git@github.com:"):
+        slug = remote.split(":", 1)[1]
+    # https://github.com/owner/repo.git
+    elif remote.startswith("https://github.com/"):
+        slug = remote.split("https://github.com/", 1)[1]
+    # http://github.com/owner/repo.git
+    elif remote.startswith("http://github.com/"):
+        slug = remote.split("http://github.com/", 1)[1]
+    else:
+        return None
+
+    if slug.endswith(".git"):
+        slug = slug[:-4]
+
+    return slug.strip("/") or None
