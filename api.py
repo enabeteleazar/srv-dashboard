@@ -44,7 +44,7 @@ def _handle(exc: services.ServiceError) -> HTTPException:
 @router.get("/health", response_model=HealthOut, summary="Ping (sans jeton)")
 def health() -> dict:
     from auth import is_configured
-    from srvctl.registry import get_root
+    from srvctl.srvctl import get_root
 
     return {
         "status": "ok",

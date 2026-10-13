@@ -23,9 +23,13 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from srvctl import journal  # noqa: E402
-from srvctl.discovery import root_path  # noqa: E402
-from srvctl.models import ProjectEntry  # noqa: E402
-from srvctl.registry import get_root, load_registry, save_registry  # noqa: E402
+from srvctl.srvctl import (  # noqa: E402
+    get_root,
+    load_registry,
+    save_registry,
+    project_path,
+    root_path,
+)
 from srvctl.status import git_status, port_is_up, recent_commits  # noqa: E402
 from srvctl.vercel import is_linked  # noqa: E402
 
@@ -35,7 +39,7 @@ PROJECT_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 VERCEL_URL_RE = re.compile(r"https://[A-Za-z0-9][A-Za-z0-9.-]*\.vercel\.app[^\s\"']*")
 
 ROOTS = ("projects", "personal", "neron")
-TYPES = ("static", "vite", "custom")
+TYPES = ("web", "webapp", "custom")
 STATUSES = ("active", "paused", "done", "idea")
 PRIORITIES = ("low", "normal", "high")
 
@@ -76,41 +80,58 @@ class ServiceError(Exception):
 
 # --- lecture --------------------------------------------------------------
 
-def project_dir(entry: ProjectEntry) -> Path:
-    return root_path(entry.root) / entry.name
+def project_dir(entry: dict) -> Path:
+    return project_path(entry)
 
 
-def _entry_or_404(name: str) -> ProjectEntry:
+def _entry_or_404(name: str) -> dict:
     entry = load_registry().get(name)
     if entry is None:
         raise ServiceError(f"Projet inconnu : {name}", 404)
     return entry
 
 
-def project_view(entry: ProjectEntry, host: Optional[str] = None, last_activity: Optional[dict] = None) -> dict:
+def project_view(
+    entry: dict,
+    host: Optional[str] = None,
+    last_activity: Optional[dict] = None,
+) -> dict:
     pdir = project_dir(entry)
     gs = git_status(pdir)
+
+    name = entry["name"]
+    port = entry.get("port")
+
     with _busy_lock:
-        busy = entry.name in _busy
+        busy = name in _busy
+
+    status = entry.get("status", "active")
+    priority = entry.get("priority", "normal")
+    vercel = bool(entry.get("vercel", False))
+
     return {
-        "name": entry.name,
-        "root": entry.root,
-        "type": entry.type,
-        "port": entry.port,
-        "status": entry.status,
-        "status_label": STATUS_LABELS.get(entry.status, entry.status),
-        "priority": entry.priority,
-        "priority_label": PRIORITY_LABELS.get(entry.priority, entry.priority),
-        "description": entry.description,
-        "notes": entry.notes,
-        "vercel_enabled": entry.vercel,
-        "vercel_linked": is_linked(pdir) if entry.vercel else None,
-        "github_repo": entry.github_repo,
-        "github_url": f"https://github.com/{entry.github_repo}" if entry.github_repo else None,
+        "name": name,
+        "root": entry.get("root", "projects"),
+        "type": entry.get("type", "web"),
+        "port": port,
+        "status": status,
+        "status_label": STATUS_LABELS.get(status, status),
+        "priority": priority,
+        "priority_label": PRIORITY_LABELS.get(priority, priority),
+        "description": entry.get("description", ""),
+        "notes": entry.get("notes", ""),
+        "vercel_enabled": vercel,
+        "vercel_linked": is_linked(pdir) if vercel else None,
+        "github_repo": entry.get("github_repo"),
+        "github_url": (
+            f"https://github.com/{entry['github_repo']}"
+            if entry.get("github_repo")
+            else None
+        ),
         "path": str(pdir),
         "exists": pdir.exists(),
-        "up": port_is_up(entry.port) if entry.port else False,
-        "url": f"http://{host}:{entry.port}" if host and entry.port else None,
+        "up": port_is_up(port) if port else False,
+        "url": f"http://{host}:{port}" if host and port else None,
         "running": busy,
         "git": {
             "tracked": bool(gs.get("tracked")),
@@ -118,7 +139,10 @@ def project_view(entry: ProjectEntry, host: Optional[str] = None, last_activity:
             "dirty": bool(gs.get("dirty")),
             "changes": gs.get("changes") or 0,
         },
-        "has_log": (get_root() / ".logs" / f"{entry.name}.log").exists(),
+        "has_log": (
+            Path("/srv/dashboard/srvctl/logs") /
+            f"{name}.log"
+        ).exists(),
         "last_activity": last_activity,
     }
 
@@ -127,12 +151,18 @@ def list_projects(status: Optional[str] = None, root: Optional[str] = None, host
     reg = load_registry()
     latest = journal.latest_by_project()
     out = []
-    for entry in reg.projects:
-        if status and entry.status != status:
+    for entry in reg.values():
+        if status and entry.get("status", "active") != status:
             continue
-        if root and entry.root != root:
+        if root and entry.get("root") != root:
             continue
-        out.append(project_view(entry, host=host, last_activity=latest.get(entry.name)))
+        out.append(
+            project_view(
+                entry,
+                host=host,
+                last_activity=latest.get(entry["name"]),
+            )
+        )
     return out
 
 
@@ -148,7 +178,7 @@ def get_project(name: str, host: Optional[str] = None) -> dict:
 
 def read_logs(name: str, lines: int = 200) -> str:
     _entry_or_404(name)
-    log_path = get_root() / ".logs" / f"{name}.log"
+    log_path = Path("/srv/dashboard/srvctl/logs") / f"{name}.log"
     if not log_path.exists():
         return ""
     content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -223,26 +253,82 @@ def _release(name: Optional[str]) -> None:
         _busy.discard(name)
 
 
-def _execute_action(activity_id: int, name: str, action: str) -> dict:
+def _execute_action(
+    activity_id: int,
+    name: str,
+    action: str,
+) -> dict:
     spec = ACTIONS[action]
     started = time.monotonic()
+
     try:
-        code, output = _run(["make", "--no-print-directory", spec["target"], name])
-        duration = int((time.monotonic() - started) * 1000)
+        if action in ("start", "stop", "restart"):
+            cmd = [
+                sys.executable,
+                str(BASE_DIR / "srvctl.py"),
+                action,
+                name,
+            ]
+        elif action == "dev":
+            cmd = [
+                sys.executable,
+                str(BASE_DIR / "srvctl.py"),
+                "start",
+                name,
+            ]
+        else:
+            cmd = [
+                "make",
+                "--no-print-directory",
+                spec["target"],
+                name,
+            ]
+
+        code, output = _run(cmd)
+
+        duration = int(
+            (time.monotonic() - started) * 1000
+        )
+
         ok = code == 0
-        journal.finish_activity(activity_id, ok, code, output, duration)
+
+        journal.finish_activity(
+            activity_id,
+            ok,
+            code,
+            output,
+            duration,
+        )
+
         if action in ("deploy", "deploy-prod"):
             urls = VERCEL_URL_RE.findall(output)
+
             journal.record_deployment(
-                activity_id, name,
-                "production" if action == "deploy-prod" else "preview",
-                ok, urls[-1] if urls else None,
+                activity_id,
+                name,
+                "production"
+                if action == "deploy-prod"
+                else "preview",
+                ok,
+                urls[-1] if urls else None,
             )
-    except Exception as exc:  # jamais silencieux : la ligne du journal doit se fermer
-        duration = int((time.monotonic() - started) * 1000)
-        journal.finish_activity(activity_id, False, None, f"[erreur interne] {exc!r}", duration)
+
+    except Exception as exc:
+        duration = int(
+            (time.monotonic() - started) * 1000
+        )
+
+        journal.finish_activity(
+            activity_id,
+            False,
+            None,
+            f"[erreur interne] {exc!r}",
+            duration,
+        )
+
     finally:
         _release(name)
+
     return journal.get_activity(activity_id)
 
 
@@ -250,7 +336,7 @@ def run_action(name: str, action: str, source: str = "dashboard", wait: bool = F
     if action not in ACTIONS:
         raise ServiceError(f"Action inconnue : {action}", 422)
     entry = _entry_or_404(name)
-    if ACTIONS[action].get("vercel") and not entry.vercel:
+    if ACTIONS[action].get("vercel") and not entry.get("vercel", False):
         raise ServiceError(f"{name} n'est pas éligible Vercel (vercel=false dans projects.json)", 400)
 
     with _busy_lock:
@@ -275,7 +361,14 @@ def sync(source: str = "dashboard", wait: bool = True) -> dict:
 
     def _do() -> dict:
         started = time.monotonic()
-        code, output = _run([sys.executable, "-m", "srvctl.cli", "sync"], timeout=900)
+        code, output = _run(
+            [
+                sys.executable,
+                str(BASE_DIR / "srvctl.py"),
+                "sync",
+            ],
+            timeout=900,
+        )
         journal.finish_activity(activity_id, code == 0, code, output, int((time.monotonic() - started) * 1000))
         return journal.get_activity(activity_id)
 
@@ -290,7 +383,7 @@ def sync(source: str = "dashboard", wait: bool = True) -> dict:
 def create_project(
     name: str,
     root: str = "projects",
-    type: str = "static",
+    type: str = "web",
     git: bool = True,
     vercel: bool = False,
     visibility: str = "public",
@@ -320,7 +413,7 @@ def create_project(
     target_dir = root_path(root) / name
     is_new_dir = not target_dir.exists()
     target_dir.mkdir(parents=True, exist_ok=True)
-    if is_new_dir and type == "static":
+    if is_new_dir and type == "web":
         (target_dir / "index.html").write_text(
             "<!doctype html>\n<html lang=\"fr\">\n<head><meta charset=\"utf-8\">"
             f"<title>{name}</title></head>\n<body><h1>{name}</h1>"
@@ -362,7 +455,6 @@ def update_project(name: str, changes: dict) -> dict:
             raise ServiceError(f"Projet inconnu : {name}", 404)
         for field, value in changes.items():
             if value is not None:
-                setattr(entry, field, value)
-        reg.upsert(entry)
+                entry[field] = value
         save_registry(reg)
     return get_project(name)
