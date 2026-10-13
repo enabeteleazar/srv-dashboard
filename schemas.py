@@ -14,7 +14,7 @@ ActionName = Literal[
     "git-push", "vercel-link", "deploy", "deploy-prod",
 ]
 RootName = Literal["projects", "personal", "neron"]
-ProjectType = Literal["static", "vite", "custom"]
+ProjectType = Literal["web", "webapp", "custom"]
 ProjectStatus = Literal["active", "paused", "done", "idea"]
 Priority = Literal["low", "normal", "high"]
 
@@ -93,7 +93,7 @@ class ProjectDetailOut(ProjectOut):
 class ProjectCreateIn(BaseModel):
     name: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_.-]*$", examples=["monNouveauSite"])
     root: RootName = "projects"
-    type: ProjectType = "static"
+    type: ProjectType = "web"
     git: bool = Field(default=True, description="git init + gh repo create sous l'org NABET")
     vercel: bool = Field(default=False, description="vercel link tout de suite")
     visibility: Literal["public", "private"] = "public"
