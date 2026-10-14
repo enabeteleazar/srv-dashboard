@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fastapi import Depends, Header, HTTPException, status  # noqa: E402
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer  # noqa: E402
 
-from srvctl.registry import get_root  # noqa: E402
+from srvctl.srvctl import get_root  # noqa: E402
 
 ENV_KEY = "DASHBOARD_API_TOKEN"
 CLIENT_RE = re.compile(r"[^A-Za-z0-9_.-]")

@@ -6,17 +6,22 @@ ROOT ?= $(if $(SRV_ROOT),$(SRV_ROOT),/srv)
 
 # srvctl vit désormais DANS dashboard/ (le dépôt est autonome), d'où le
 # PYTHONPATH : le Makefile, lui, tourne depuis la racine du serveur.
-SRVCTL := SRV_ROOT="$(ROOT)" PYTHONPATH="$(ROOT)/dashboard" python3 -m srvctl.cli
+# Registre unique des projets (source de vérité), dans le dépôt : srvctl/projects.json.
+REGISTRY ?= $(ROOT)/dashboard/srvctl/projects.json
+
+SRVCTL := SRV_ROOT="$(ROOT)" SRV_REGISTRY="$(REGISTRY)" PYTHONPATH="$(ROOT)/dashboard" "$(ROOT)/dashboard/.venv/bin/python" -m srvctl.cli
 
 # PROJECTS, STATIC_PROJECTS, WEB_PROJECTS, CUSTOM_WEB_PROJECTS,
 # VERCEL_PROJECTS et PROJECT_DIR_<nom> sont générés par srvctl à partir
-# de /srv/projects.json (source de vérité) — voir .projects.mk.
-# NE PLUS ÉDITER CES LISTES À LA MAIN : éditer projects.json puis lancer
+# du registre (srvctl/projects.json, source de vérité) — voir .projects.mk.
+# Types : web -> STATIC_PROJECTS, webapp -> WEB_PROJECTS,
+# custom -> WEB_PROJECTS + CUSTOM_WEB_PROJECTS.
+# NE PLUS ÉDITER CES LISTES À LA MAIN : éditer le registre puis lancer
 # `make sync`. Le -include régénère automatiquement le fichier si
-# projects.json a changé depuis la dernière génération.
+# le registre a changé depuis la dernière génération.
 -include .projects.mk
 
-.projects.mk: projects.json
+.projects.mk: $(REGISTRY)
 	@$(SRVCTL) generate-mk > .projects.mk
 
 # Reste des WEB_PROJECTS : simple "vite preview" au démarrage (les
@@ -30,11 +35,11 @@ PROJECT_DIR = $(PROJECT_DIR_$(PROJECT))
 
 .DEFAULT_GOAL := help
 
-.PHONY: help list _project-dir sync dashboard api-token \
+.PHONY: help list _project-dir sync dashboard api-token install-env-dev \
 	dev dev-all dev-project \
 	start start-all start-project \
 	stop stop-all stop-project \
-	status status-all status-project \
+	status status-all status-project registre \
 	restart restart-all restart-project \
 	build build-all build-project \
 	test test-all test-project \
@@ -92,8 +97,8 @@ help:
 _project-dir:
 	@echo "$(PROJECT_DIR)"
 
-# Scanne projects/personal/neron, enregistre les nouveaux dossiers dans
-# projects.json (type, port, git init + repo GitHub, vercel link), met
+# Scanne projects/personal, enregistre les nouveaux dossiers dans
+# le registre (type, port, git init + repo GitHub, vercel link), met
 # à jour .env, puis régénère .projects.mk immédiatement (sans attendre
 # le prochain appel à make). Options: make sync ARGS="--no-git --no-vercel".
 sync:
@@ -104,8 +109,28 @@ sync:
 # http://0.0.0.0:$$DASHBOARD_PORT (5199 par défaut). Nécessite le
 # venv/paquets listés dans requirements.txt (fastapi, uvicorn, ...).
 dashboard:
-	@echo "Dashboard sur http://0.0.0.0:$${DASHBOARD_PORT:-5199} (Ctrl+C pour arrêter)"
-	@cd "$(ROOT)/dashboard" && SRV_ROOT="$(ROOT)" python3 -m uvicorn main:app --host 0.0.0.0 --port $${DASHBOARD_PORT:-5199}
+	@PORT=$${DASHBOARD_PORT:-5199}; \
+	PIDFILE="$(ROOT)/dashboard/dashboard.pid"; \
+	LOGFILE="$(ROOT)/dashboard/dashboard.log"; \
+	EXISTING_PID=$$(ss -ltnp 2>/dev/null | awk -v port=":$$PORT" '$$4 ~ port"$$" && match($$0,/pid=[0-9]+/) {print substr($$0,RSTART+4,RLENGTH-4); exit}'); \
+	if [ -n "$$EXISTING_PID" ]; then \
+		echo "Dashboard déjà lancé — PID $$EXISTING_PID — http://0.0.0.0:$$PORT"; \
+		exit 0; \
+	fi; \
+	rm -f "$$PIDFILE"; \
+	echo "Lancement du Dashboard en arrière-plan sur http://0.0.0.0:$$PORT"; \
+	cd "$(ROOT)/dashboard" && \
+	SRV_ROOT="$(ROOT)" nohup "$(ROOT)/dashboard/.venv/bin/python" -m uvicorn main:app --host 0.0.0.0 --port "$$PORT" >> "$$LOGFILE" 2>&1 & \
+	PID=$$!; \
+	echo "$$PID" > "$$PIDFILE"; \
+	sleep 1; \
+	if kill -0 "$$PID" 2>/dev/null; then \
+		echo "Dashboard lancé — PID $$PID — http://0.0.0.0:$$PORT"; \
+	else \
+		echo "Échec du lancement. Voir $$LOGFILE"; \
+		rm -f "$$PIDFILE"; \
+		exit 1; \
+	fi
 
 # Jeton Bearer de l'API du dashboard (pour Neron) : écrit DASHBOARD_API_TOKEN
 # dans /srv/.env. `make api-token ARGS=--rotate` en génère un nouveau.
@@ -192,8 +217,7 @@ start-all:
 
 start-project:
 	@project="$(PROJECT)"; \
-	key=$$(echo "$$project" | tr '[:lower:].-' '[:upper:]__'); \
-	port=$$(grep "^$${key}_PORT=" "$(ROOT)/.env" | cut -d= -f2); \
+	port="$(PROJECT_PORT_$(PROJECT))"; \
 	if [ -z "$$port" ]; then echo "ERROR: projet inconnu ou port absent: $$project"; exit 1; fi; \
 	mkdir -p "$(ROOT)/.logs"; \
 	echo "START: $$project → port $$port"; \
@@ -202,9 +226,9 @@ start-project:
 	elif [ "$$project" = "wwdc26Bingo" ]; then \
 		cd "$(PROJECT_DIR)" && setsid nohup env PORT="$$port" BASE_PATH=/ pnpm --filter @workspace/wwdc26-bingo run serve > "$(ROOT)/.logs/$$project.log" 2>&1 < /dev/null & \
 	elif [ "$$project" = "oraneCoatch" ]; then \
-		cd "$(PROJECT_DIR)" && setsid nohup env PORT="$$port" pnpm run serve > "$(ROOT)/.logs/$$project.log" 2>&1 < /dev/null & \
+		cd "$(PROJECT_DIR)" && setsid nohup env PORT="$$port" pnpm run dev --host 0.0.0.0 --port "$$port" > "$(ROOT)/.logs/$$project.log" 2>&1 < /dev/null & \
 	elif printf '%s\n' $(VITE_PREVIEW_PROJECTS) | grep -Fxq "$$project"; then \
-		cd "$(PROJECT_DIR)" && setsid nohup pnpm exec vite preview --host 0.0.0.0 --port "$$port" > "$(ROOT)/.logs/$$project.log" 2>&1 < /dev/null & \
+		cd "$(PROJECT_DIR)" && setsid nohup env PORT="$$port" pnpm exec vite preview --host 0.0.0.0 --port "$$port" --strictPort > "$(ROOT)/.logs/$$project.log" 2>&1 < /dev/null & \
 	else \
 		echo "ERROR: projet inconnu: $$project"; exit 1; \
 	fi
@@ -230,11 +254,13 @@ stop-all:
 
 stop-project:
 	@project="$(PROJECT)"; \
-	key=$$(echo "$$project" | tr '[:lower:].-' '[:upper:]__'); \
-	port=$$(grep "^$${key}_PORT=" "$(ROOT)/.env" | cut -d= -f2); \
+	port="$(PROJECT_PORT_$(PROJECT))"; \
 	if [ -z "$$port" ]; then echo "ERROR: projet inconnu ou port absent: $$project"; exit 1; fi; \
 	echo "STOP: $$project → port $$port"; \
 	fuser -k "$$port/tcp" 2>/dev/null || true
+
+registre:
+	@$(SRVCTL) list
 
 status:
 	@if [ "$(word 2,$(MAKECMDGOALS))" = "all" ]; then \
@@ -251,30 +277,25 @@ status-all:
 	@echo ""
 	@echo "=== STATUS ALL ==="
 	@echo ""
-	@printf "%-14s %-6s %-6s\n" "PROJET" "PORT" "ETAT"
-	@printf "%-14s %-6s %-6s\n" "--------------" "------" "------"
-	@up=0; down=0; err=0; \
-	for project in $(PROJECTS); do \
-		key=$$(echo "$$project" | tr '[:lower:].-' '[:upper:]__'); \
-		port=$$(grep "^$${key}_PORT=" "$(ROOT)/.env" | cut -d= -f2); \
+	@printf "%-28s %-6s %-6s\n" "PROJET" "PORT" "ETAT"
+	@printf "%-28s %-6s %-6s\n" "----------------------------" "------" "------"
+	@for project in $(PROJECTS); do \
+		port="$$(make --no-print-directory -s print-project-port PROJECT="$$project")"; \
 		if [ -z "$$port" ]; then \
-			printf "%-14s %-6s %-6s\n" "$$project" "-" "ERREUR"; \
-			err=$$((err+1)); \
+			printf "%-28s %-6s %-6s\n" "$$project" "-" "ERROR"; \
 		elif ss -ltn | grep -q ":$$port "; then \
-			printf "%-14s %-6s %-6s\n" "$$project" "$$port" "UP"; \
-			up=$$((up+1)); \
+			printf "%-28s %-6s %-6s\n" "$$project" "$$port" "UP"; \
 		else \
-			printf "%-14s %-6s %-6s\n" "$$project" "$$port" "DOWN"; \
-			down=$$((down+1)); \
+			printf "%-28s %-6s %-6s\n" "$$project" "$$port" "DOWN"; \
 		fi; \
-	done; \
-	echo ""; \
-	echo "→ $$up up, $$down down, $$err erreur(s)"
+	done
+
+print-project-port:
+	@eval "printf '%s' '$(PROJECT_PORT_$(PROJECT))'"
 
 status-project:
 	@project="$(PROJECT)"; \
-	key=$$(echo "$$project" | tr '[:lower:].-' '[:upper:]__'); \
-	port=$$(grep "^$${key}_PORT=" "$(ROOT)/.env" | cut -d= -f2); \
+	port="$(PROJECT_PORT_$(PROJECT))"; \
 	if [ -z "$$port" ]; then \
 		echo "ERROR: projet inconnu ou port absent: $$project"; \
 	elif ss -ltn | grep -q ":$$port "; then \
@@ -620,6 +641,29 @@ deploy-prod-project:
 	cd "$(PROJECT_DIR)" && vercel deploy --prod --yes; \
 	if [ $$? -eq 0 ]; then printf "%s\tOK\n" "$$project" >> "$(ROOT)/.logs/deploy-prod-results.tsv"; \
 	else printf "%s\tECHEC\n" "$$project" >> "$(ROOT)/.logs/deploy-prod-results.tsv"; exit 1; fi
+
+# --- Environnement de dev : paquets système, Node, pnpm, vercel, venv ---
+NODE_MAJOR ?= 24
+
+install-env-dev:
+	@echo ""
+	@echo "=== INSTALL ENV DEV ==="
+	sudo apt-get update
+	sudo apt-get install -y make git curl ca-certificates gnupg psmisc iproute2 \
+		python3 python3-venv python3-pip gh caddy
+	@if ! command -v node >/dev/null 2>&1 || [ "$$(node -v | cut -d. -f1)" != "v$(NODE_MAJOR)" ]; then \
+		echo "→ Node $(NODE_MAJOR) via NodeSource"; \
+		curl -fsSL https://deb.nodesource.com/setup_$(NODE_MAJOR).x | sudo -E bash - && \
+		sudo apt-get install -y nodejs || exit 1; \
+	fi
+	sudo npm i -g pnpm vercel serve
+	@python3 -m venv "$(ROOT)/dashboard/.venv"
+	@"$(ROOT)/dashboard/.venv/bin/pip" install -q -r "$(ROOT)/dashboard/requirements.txt"
+	@echo ""
+	@echo "Versions :"
+	@node -v; npm -v; pnpm -v; vercel --version; gh --version | head -1; caddy version
+	@echo ""
+	@echo "À faire à la main : gh auth login && vercel login"
 
 all:
 	@:

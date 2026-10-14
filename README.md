@@ -3,7 +3,7 @@
 Outillage complet du serveur `/srv` : le Makefile, la couche Python `srvctl`, le dashboard web et l'API REST que Neron appelle. Ce dépôt est autonome — tout le code est ici, seules les données du serveur restent dehors.
 
 - **`Makefile`** — les commandes historiques (`make list`, `make dev <projet>`, `make deploy <projet>`…). C'est lui qui fait le vrai travail ; le dashboard et l'API ne font que l'appeler.
-- **`srvctl/`** — détection des nouveaux dossiers, type de projet, port libre, `.env`, `git init` + `gh repo create` (org NABET), `vercel link`, génération de `.projects.mk`, journal SQLite.
+- **`srvctl/`** — le registre des projets (`srvctl.py`), la détection des nouveaux dossiers, le type de projet, le port libre, le `.env`, `git init` + `gh repo create` (org NABET), `vercel link`, la génération de `.projects.mk` et le journal SQLite.
 - **`main.py` / `api.py` / `services.py` / `auth.py` / `schemas.py`** — l'interface web et l'API `/api/v1`, avec `templates/` et `static/`.
 - **`clients/`** — le client Python à déposer dans Neron.
 - **`systemd/`** — l'unité qui fait tourner le dashboard en permanence.
@@ -16,10 +16,10 @@ Le dépôt se clone dans `<racine>/dashboard`, et un lien symbolique met le Make
 /srv/
 ├── Makefile -> dashboard/Makefile   lien symbolique
 ├── dashboard/                       ce dépôt
-├── projects.json                    source de vérité (données, hors dépôt)
+│   └── srvctl/projects.json         registre des projets, source de vérité (données, hors dépôt)
 ├── .env                             ports + DASHBOARD_API_TOKEN (jamais versionné)
 ├── .projects.mk .data/ .logs/       généré : listes Make, journal SQLite, logs
-└── projects/ personal/ neron/       les projets, chacun avec son propre dépôt git
+└── projects/ personal/ Neron/       les projets, chacun avec son propre dépôt git
 ```
 
 Sur une machine neuve :
@@ -29,14 +29,38 @@ sudo mkdir -p /srv && cd /srv
 git clone git@github.com:NABET/srv-dashboard.git dashboard
 ln -s dashboard/Makefile Makefile
 pip install -r dashboard/requirements.txt --break-system-packages
-make sync            # scanne projects/ personal/ neron/ et crée projects.json
+make sync            # scanne projects/ personal/ et crée srvctl/projects.json
 make api-token       # jeton de l'API pour Neron
 make dashboard       # ou l'unité systemd, voir plus bas
 ```
 
-Ailleurs que dans `/srv`, une seule variable suffit — le Makefile et `srvctl` lisent la même : `SRV_ROOT=/opt/srv make list` (et `Environment=SRV_ROOT=/opt/srv` dans l'unité systemd).
+Ailleurs que dans `/srv`, une seule variable suffit — le Makefile et `srvctl` lisent la même : `SRV_ROOT=/opt/srv make list` (et `Environment=SRV_ROOT=/opt/srv` dans l'unité systemd). Le registre, lui, suit le dépôt ; `SRV_REGISTRY=/chemin/projects.json` permet de le placer ailleurs (tests, déploiement particulier). Sous Linux la casse compte : la racine logique `neron` correspond au dossier `/srv/Neron`.
 
-Première installation sur un `/srv` déjà peuplé : `make sync` puis `python3 -m srvctl.cli import-env` récupère les ports déjà en service depuis le `.env` existant. Les champs de suivi (`status`, `priority`, `description`, `notes`) sont facultatifs dans `projects.json` : un fichier qui ne les contient pas reste valide, les projets démarrent en « actif / priorité normale ».
+Première installation sur un `/srv` déjà peuplé : `make sync` puis `python3 -m srvctl.cli import-env` récupère les ports déjà en service depuis le `.env` existant. Les champs de suivi (`status`, `priority`, `description`, `notes`) sont facultatifs dans le registre : une entrée qui ne les contient pas reste valide, le projet démarre en « actif / priorité normale ».
+
+## Le registre des projets
+
+Un seul fichier, `srvctl/projects.json`, lu et écrit par `srvctl/srvctl.py` (`load_registry` / `save_registry`, un dictionnaire nom → entrée). Le dashboard, l'API, le Makefile (via `.projects.mk`) et `srvctl.cli` partent tous de lui ; il n'existe plus d'autre `projects.json`. Le fichier contient des données propres au serveur (chemins, ports) : il est dans `.gitignore`, et un dépôt fraîchement cloné démarre avec un registre vide.
+
+Chaque entrée :
+
+| Champ | Rôle |
+|---|---|
+| `name`, `root`, `path` | nom, racine logique (`projects` / `personal` / `neron`) et chemin complet du dossier |
+| `type` | `web`, `webapp` ou `custom` (voir plus bas) |
+| `port`, `start` | port attribué et commande de démarrage du service |
+| `vercel`, `vercel_enabled`, `github_repo`, `git`, `visibility` | liens Vercel et GitHub |
+| `status`, `priority`, `description`, `notes` | suivi (facultatifs) |
+
+Les trois types, et ce que fait le Makefile de chacun :
+
+| Type | Projet | Listes générées dans `.projects.mk` |
+|---|---|---|
+| `web` | site statique, servi par `npx serve` | `STATIC_PROJECTS` |
+| `webapp` | application avec serveur de dev (Vite), lancée par `pnpm dev` | `WEB_PROJECTS` |
+| `custom` | cycle de vie sur mesure, commande `start` écrite à la main | `WEB_PROJECTS` et `CUSTOM_WEB_PROJECTS` |
+
+Avant la migration au registre unique, ces types s'appelaient `static` et `vite` et vivaient dans `/srv/projects.json`, qui n'est plus lu (on peut le garder en archive).
 
 ## Ajouter un projet
 
@@ -46,9 +70,9 @@ Trois chemins, tous équivalents — ils finissent au même endroit :
 2. **Neron / API** : `POST /api/v1/projects`.
 3. **Ligne de commande** : déposer le dossier dans `/srv/projects/` puis `make sync`.
 
-Dans les trois cas : type deviné (`static` sans `package.json`, `vite` si vite détecté, sinon `custom`), premier port libre attribué (plage 5180-5199, le port du dashboard est exclu), clés `<PROJET>_PORT` / `<PROJET>_TYPE` ajoutées dans `.env`, `.projects.mk` régénéré, puis `git init` + `gh repo create NABET/<nom>` et `vercel link` selon les options. Ensuite `make dev`, `make deploy`… fonctionnent immédiatement, sans toucher au Makefile.
+Dans les trois cas : type deviné (`web` sans `package.json`, `webapp` si vite est détecté, `custom` si un script `dev` / `build` / `serve` existe sans vite), premier port libre attribué (plage 5180-5299, 8000-8099 pour la racine `neron`, le port du dashboard est exclu), clés `<PROJET>_PORT` / `<PROJET>_TYPE` ajoutées dans `.env`, `.projects.mk` régénéré, puis `git init` + `gh repo create NABET/<nom>` et `vercel link` selon les options. Ensuite `make dev`, `make deploy`… fonctionnent immédiatement, sans toucher au Makefile.
 
-Un projet au cycle de vie sur mesure (`wwdc26Bingo`, `oraneCoatch`) est détecté `custom`, mais demande toujours sa branche dédiée dans `dev-project` / `start-project` : l'automatisation ne peut pas deviner une commande de démarrage arbitraire.
+Un projet au cycle de vie sur mesure (`wwdc26Bingo`) est détecté `custom`, mais il faut renseigner son champ `start` dans le registre, et `oraneCoatch` garde sa branche dédiée dans `dev-project` / `start-project` : l'automatisation ne peut pas deviner une commande de démarrage arbitraire. `make sync` et `add` le signalent d'une ligne `! type custom`.
 
 ## Dashboard
 
@@ -136,7 +160,7 @@ srv.update_project("duoLingo", status="paused", notes="en attente des maquettes"
 
 ## Ce qui a été testé, et comment
 
-123 vérifications automatiques dans un `/srv` factice, avec `gh` et `vercel` simulés : rendu des quatre pages, création de projet (web + API), suivi persistant dans `projects.json`, actions synchrones et asynchrones, refus des actions hors liste blanche et des actions concurrentes sur un même projet, extraction de l'URL Vercel, journal et filtres, authentification (503 sans jeton, 401 sans en-tête, 403 mauvais jeton), génération et rotation du jeton, et le client Python contre un vrai serveur uvicorn. Le rendu a été relu en capture d'écran en thème clair, sombre et sur mobile, et l'unité systemd passe `systemd-analyze verify`.
+123 vérifications automatiques dans un `/srv` factice, avec `gh` et `vercel` simulés : rendu des quatre pages, création de projet (web + API), suivi persistant dans le registre, actions synchrones et asynchrones, refus des actions hors liste blanche et des actions concurrentes sur un même projet, extraction de l'URL Vercel, journal et filtres, authentification (503 sans jeton, 401 sans en-tête, 403 mauvais jeton), génération et rotation du jeton, et le client Python contre un vrai serveur uvicorn. Le rendu a été relu en capture d'écran en thème clair, sombre et sur mobile, et l'unité systemd passe `systemd-analyze verify`.
 
 Une régression est explicitement couverte : `make start` lance le serveur d'un projet en arrière-plan, et le sous-shell qui le porte garde le tube de sortie ouvert tant que le serveur tourne. La sortie des commandes passe donc par un fichier temporaire et jamais par un tube — sinon l'action resterait « en cours » indéfiniment et le projet verrouillé.
 

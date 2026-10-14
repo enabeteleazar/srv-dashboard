@@ -25,7 +25,7 @@ import services  # noqa: E402
 from api import API_VERSION, router as public_router, secured as secured_router  # noqa: E402
 from auth import ENV_KEY, is_configured  # noqa: E402
 from srvctl import journal  # noqa: E402
-from srvctl.registry import load_registry  # noqa: E402
+from srvctl.srvctl import load_registry  # noqa: E402
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -123,6 +123,7 @@ def render(request: Request, template: str, nav: str, **context):
         "flash": params.get("msg"),
         "flash_kind": params.get("kind", "ok"),
         "api_configured": is_configured(),
+        "api_version": API_VERSION,
         "actions": services.ACTIONS,
         "roots": services.ROOTS,
         "types": services.TYPES,
@@ -170,7 +171,7 @@ def activity_page(request: Request, project: Optional[str] = None, status: Optio
     return render(
         request, "activity.html", nav="activity",
         entries=journal.list_activity(project=project, status=status, limit=200),
-        all_projects=[p.name for p in load_registry().projects],
+        all_projects=list(load_registry().keys()),
         selected_project=project, selected_status=status,
     )
 
@@ -235,7 +236,7 @@ def meta_form(
 def create_form(
     name: str = Form(...),
     root: str = Form("projects"),
-    type: str = Form("static"),
+    type: str = Form("web"),
     description: str = Form(""),
     priority: str = Form("normal"),
     visibility: str = Form("public"),

@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator, Optional
 
-from .registry import get_root
+from .srvctl import get_root
 
 MAX_OUTPUT_CHARS = 20_000  # on garde la fin de la sortie (là où sont les erreurs)
 
