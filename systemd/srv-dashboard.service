@@ -10,12 +10,15 @@ User=eleazar
 Group=eleazar
 WorkingDirectory=/srv/dashboard
 
-# uvicorn est installé dans le site-packages utilisateur d'eleazar :
-# `python3 -m uvicorn` le trouve sans dépendre du PATH du service.
+# Même interpréteur que `make dashboard` : le venv du dépôt (fastapi, uvicorn…).
 Environment=SRV_ROOT=/srv
 Environment=DASHBOARD_PORT=5199
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port ${DASHBOARD_PORT}
+# systemd démarre avec un PATH minimal : on ajoute les emplacements habituels
+# de pnpm, npx, vercel et gh sous le HOME d'eleazar. À ajuster si
+# `command -v pnpm npx vercel gh` (voir README) en trouve ailleurs.
+Environment=PATH=/home/eleazar/.local/bin:/home/eleazar/.local/share/pnpm:/home/eleazar/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/srv/dashboard/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port ${DASHBOARD_PORT}
 
 Restart=on-failure
 RestartSec=3
