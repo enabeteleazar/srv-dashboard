@@ -20,3 +20,5 @@ srvctl/pids/
 *.backup.*
 dashboard.log
 dashboard.pid
+.projects.mk
+.projects.mk

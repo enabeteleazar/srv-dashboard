@@ -123,6 +123,7 @@ def render(request: Request, template: str, nav: str, **context):
         "flash": params.get("msg"),
         "flash_kind": params.get("kind", "ok"),
         "api_configured": is_configured(),
+        "api_version": API_VERSION,
         "actions": services.ACTIONS,
         "roots": services.ROOTS,
         "types": services.TYPES,
